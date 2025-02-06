@@ -5,4 +5,4 @@
 ## Topics Covered:
 * I will be updating it as I make progress, but here is a list of topics I have covered so far:
     1.  SysTick Timer and Time Slicing
-    2. Basic Multitasking (without RTOS kernel running)
+    2. Basic Multitasking Implementation as Round Robin Scheduling (without RTOS kernel running)
