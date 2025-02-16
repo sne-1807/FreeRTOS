@@ -317,6 +317,161 @@ __IO uint32_t uwTick;
 HAL_TickFreqTypeDef uwTickFreq = HAL_TICK_FREQ_DEFAULT;  /* 1KHz */
 ```
 
-**I DON'T UNDERSTAND THE WAY THIS CONDITIONAL BLOCK WORKS. THE WHOLE #if, if etc (?????????????????)**
+### What are the '#if' and '#endif' blocks
+This concept was pretty new to me so here is what I understood about what they are. 
+- `#if` and `#endif` is like a conditional compilation block (how i understood it) or formally called a  *preprocessor directive* (very fancy word, yes)
+- It basically means that whatever is within this block will only be *compiled* if the condition at the `#if` block is satisfied
 
-============== To be Finished :} ======================
+In our case, if `INCLUDE_xTaskGetSchedulerState == 1` condition is satisfied, the block of code will compile, which in turn is defined here:
+```c
+//Set the following definitions to 1 to include the API function, or zero to exclude the API functions:
+#define INCLUDE_xTaskGetSchedulerState       1
+```
+- So we are telling the compiler:  "Hey, I have set this RTOS API to 1, so I am using it!"
+- There are other RTOS APIs here that have also been assigned 0/1 but I have not included them above to avoid confusion  
+  
+
+### What is xTaskGetSchedulerState() Function
+
+- This function is useful in specific situations where you need to know the state of the FreeRTOS scheduler
+- The scheduler can be in three states and this function will return that particlar state:
+  1. Running: returns  `taskSCHEDULER_RUNNING`
+  2. Suspended: returns `taskSCHEDULER_SUSPENDED`
+  3. Not Started: returns `taskSCHEDULER_NOT_STARTED`
+```c
+#if ( ( INCLUDE_xTaskGetSchedulerState == 1 ) || ( configUSE_TIMERS == 1 ) )
+
+	BaseType_t xTaskGetSchedulerState( void )
+	{
+	BaseType_t xReturn;
+
+		if( xSchedulerRunning == pdFALSE )
+		{
+			xReturn = taskSCHEDULER_NOT_STARTED;
+		}
+		else
+		{
+			if( uxSchedulerSuspended == ( UBaseType_t ) pdFALSE )
+			{
+				xReturn = taskSCHEDULER_RUNNING;
+			}
+			else
+			{
+				xReturn = taskSCHEDULER_SUSPENDED;
+			}
+		}
+
+		return xReturn;
+	}
+
+#endif /* ( ( INCLUDE_xTaskGetSchedulerState == 1 ) || ( configUSE_TIMERS == 1 ) ) */
+/*-----------------------------------------------------------*/
+```
+`configUSE_TIMERS`: if this macro is set to 1, freeRTOS software timers are enabled
+- Hence this xTaskGetSchedulerState() function is only compiled and called when the `#if` conditions are satisfied
+
+#### Why do I need a Software Timer when I already have SysTick (hardware timer)?
+  
+- The SysTick Timer generates interrupts at regular intervals. It's like the foundation timing system. When the SysTick interrupt occurs, it doesn't know what to do specifically
+- Software Timers are fully managed by the FreeRTOS kernel, and allows you to schedule any **callback functions** that need to be called once that timer expires
+- Software Timers/FreeRTOS use SysTick as it's base
+
+**So when a SysTick Interrupt happens:**
+1. FreeRTOS checks its list of software timers to see if any software timers have "expired" or if their scheduled time has arrived
+2. If a software timer has expired, FreeRTOS calls the **callback function** associated with that timer
+
+Remember that software timers donnot actually set the time limit for tasks to run, that is taken care of by the Scheduler. These are for other functions, like every 2ms read from a sensor etc (it can also be used in very FreeRTOS specific work too)
+
+#### BaseType_t
+- BaseType_t is a **typedef**, or a way to nickname an existing variable like int or long. It is not a macro.
+- Since for different systems datatypes have different sizes, we use this to generalise the program
+```c
+#ifdef __32BIT_ARCHITECTURE__ // Example condition
+typedef long BaseType_t;
+#else
+typedef int BaseType_t;
+#endif
+```
+- If 32 bit system, then BaseType_t replaces long 
+- It's int return values are normally used to express boolean values like 0 = FALSE and 1 = SysTick_VAL_CURRENT_Msk
+
+Hence the return type of `xTaskGetSchedulerState` is BaseType_t which would have been defined as int/long earlier (normally a 0 or 1)
+
+This is in the form of xReturn, which is of datatype BaseType_t and whatever gets stored in this (taskSCHEDULER_NOT_STARTED, taskSCHEDULER_RUNNING, taskSCHEDULER_SUSPENDED) get's returned when the xTaskGetSchedulerState() function is called 
+
+```c
+/* Definitions returned by xTaskGetSchedulerState().  taskSCHEDULER_SUSPENDED is
+0 to generate more optimal code when configASSERT() is defined as the constant
+is used in assert() statements. */
+#define taskSCHEDULER_SUSPENDED		( ( BaseType_t ) 0 )
+#define taskSCHEDULER_NOT_STARTED	( ( BaseType_t ) 1 )
+#define taskSCHEDULER_RUNNING		( ( BaseType_t ) 2 )
+```
+
+#### Scheduler Not Running
+```c
+if( xSchedulerRunning == pdFALSE )
+	{
+			xReturn = taskSCHEDULER_NOT_STARTED;
+  }
+```
+- `pdFALSE` is a RTOS defined macro that represents the boolean value False (maybe it's a 0)
+- `xSchedulerRunning` is a normal variable acting as a flag that is default set to pdFALSE at starting. It indicates if scheduler is running, if not running, return taskSCHEDULER_NOT_STARTED
+  
+#### Scheduler Running
+```c
+if( uxSchedulerSuspended == ( UBaseType_t ) pdFALSE )
+			{
+				xReturn = taskSCHEDULER_RUNNING;
+      }
+```
+- In a similar way there is a flag to check if scheduler is suspended, and returns the corresponding output when the xTaskGetSchedulerState function is called  
+
+#### Scheduler not Started
+If above two conditions are not satisfied then obviously the scheduler has not started so returns that output.
+
+#### For Reference (How the flags used here have been initialised)
+```c
+PRIVILEGED_DATA static volatile BaseType_t xSchedulerRunning 		= pdFALSE;
+PRIVILEGED_DATA static volatile UBaseType_t uxSchedulerSuspended	= ( UBaseType_t ) pdFALSE;
+```
+
+### Coming Back to SysTick_Handler() Function:
+```c
+#if (INCLUDE_xTaskGetSchedulerState == 1 )
+  if (xTaskGetSchedulerState() != taskSCHEDULER_NOT_STARTED)
+  {
+#endif /* INCLUDE_xTaskGetSchedulerState */
+  xPortSysTickHandler();
+```  
+
+- If the FreeRTOS scheduler has been started (the if condition), then the FreeRTOS handler (xPortSysTickHandler()) is called to do RTOS-related work.
+- If the FreeRTOS scheduler has not been started, the xPortSysTickHandler() is not called.
+
+### What is xPortSysTickHandler() Function:
+```c
+void xPortSysTickHandler( void )
+{
+	/* The SysTick runs at the lowest interrupt priority, so when this interrupt
+	executes all interrupts must be unmasked.  There is therefore no need to
+	save and then restore the interrupt mask value as its value is already
+	known. */
+	portDISABLE_INTERRUPTS();
+	{
+		/* Increment the RTOS tick. */
+		if( xTaskIncrementTick() != pdFALSE )
+		{
+			/* A context switch is required.  Context switching is performed in
+			the PendSV interrupt.  Pend the PendSV interrupt. */
+			portNVIC_INT_CTRL_REG = portNVIC_PENDSVSET_BIT;
+		}
+	}
+	portENABLE_INTERRUPTS();
+}
+```
+EXPLANATION TO BE COMPLETED 
+
+### To summarise:
+SysTick_Handler() is used mainly to increment the HAL Tick counter always, and call the xPortSysTickHandler(), which is the function where RTOS does its work like context switching, timer management, WHEN the scheduler is either running/suspended
+
+**Doubts:** Getting confused with all the different timers(HAL increment timer, software timers by RTOS etc)
