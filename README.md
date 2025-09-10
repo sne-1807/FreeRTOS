@@ -1,8 +1,9 @@
 # FreeRTOS Learning Documentation
 ## Introduction
 * This repository serves as a place where I can document and organise my learning journey in FreeRTOS. Starting from the basics, I am working my way towards implementing FreeRTOS in an projects for enhanced multitasking and computational efficiency when running complex programs
+* With a bottom-up approach, I will start reimplenting task creation, allocation, scheduling, SysTick Timer creating a foundation, which I will further build upon to understand RTOS kernel architecture, API Usage etc.
 
 ## Topics Covered:
 * I will be updating it as I make progress, but here is a list of topics I have covered so far:
-    1.  SysTick Timer Implementation using HAL (STM32CubeMX)
+    1.  SysTick Timer Reimplementation without using HAL (STM32CubeMX)
     2. Basic Multitasking Implementation as Round Robin Scheduling (without RTOS kernel running)
